@@ -461,40 +461,104 @@ extension LiveTrainingView {
     private func simulatedPressureValue(at elapsed: Double) -> Double {
         switch settings.trainingMode {
         case .dynamic:
-            let cycleDuration = 2.4
-            let local = elapsed.truncatingRemainder(dividingBy: cycleDuration) / cycleDuration
-
-            if local < 0.15 {
-                return 0
-            } else if local < 0.42 {
-                return ((local - 0.15) / 0.27) * 14.0
-            } else if local < 0.64 {
-                return 11.8 + Double.random(in: -1.2...1.9)
-            } else if local < 0.88 {
-                return max(0, (1.0 - (local - 0.64) / 0.24) * 11.5)
-            } else {
-                return 0
-            }
+            return simulatedDynamicPressure(at: elapsed)
         case .staticHold:
-            let cycleDuration = 8.0
-            let local = elapsed.truncatingRemainder(dividingBy: cycleDuration) / cycleDuration
-
-            if local < 0.12 {
-                return 0
-            } else if local < 0.24 {
-                return ((local - 0.12) / 0.12) * 11.2
-            } else if local < 0.70 {
-                let base = 9.4 + Double.random(in: -1.1...1.4)
-                if Int(elapsed * 10).isMultiple(of: 17) {
-                    return max(6.4, base - 1.9)
-                }
-                return base
-            } else if local < 0.86 {
-                return max(0, (1.0 - (local - 0.70) / 0.16) * 10.5)
-            } else {
-                return 0
-            }
+            return simulatedStaticPressure(at: elapsed)
         }
+    }
+
+    /// A deterministic, repeatable waveform that resembles a sequence of
+    /// effort-driven pressure pulses. Each repetition has a slightly different
+    /// strength, rise time and shoulder so the demo is realistic without being
+    /// noisy or changing between recordings.
+    private func simulatedDynamicPressure(at elapsed: Double) -> Double {
+        let cycleDuration = 1.8
+        let cycleNumber = Int(elapsed / cycleDuration)
+        let phase = elapsed.truncatingRemainder(dividingBy: cycleDuration) / cycleDuration
+        let peakForces = [14.8, 13.9, 15.4, 12.4, 14.6, 13.2, 15.0, 14.1, 12.7, 15.5]
+        let peak = peakForces[cycleNumber % peakForces.count]
+
+        let baseline = 0.18
+            + 0.07 * sin(elapsed * 2.1)
+            + 0.04 * sin(elapsed * 5.7 + 0.8)
+
+        guard phase >= 0.10, phase <= 0.84 else {
+            return max(0, baseline)
+        }
+
+        let timingOffset = 0.008 * sin(Double(cycleNumber) * 1.7)
+        let primary = peak * gaussian(
+            phase,
+            center: 0.40 + timingOffset,
+            width: 0.105
+        )
+        let shoulder = peak * 0.16 * gaussian(
+            phase,
+            center: 0.565 + timingOffset,
+            width: 0.072
+        )
+        let physiologicalRipple = (primary + shoulder) * (
+            0.018 * sin(elapsed * 24.0 + Double(cycleNumber))
+            + 0.010 * sin(elapsed * 41.0)
+        )
+
+        return max(0, baseline + primary + shoulder + physiologicalRipple)
+    }
+
+    /// Static holds include a smooth ramp, a gently fatiguing plateau, small
+    /// tremor components and an occasional short pressure dip. The hold length
+    /// adapts to the user's configured target duration.
+    private func simulatedStaticPressure(at elapsed: Double) -> Double {
+        let restDuration = 0.9
+        let rampDuration = 0.9
+        let holdDuration = Double(settings.staticHoldDurationSec) + 0.8
+        let releaseDuration = 0.8
+        let recoveryDuration = 0.9
+        let cycleDuration = restDuration + rampDuration + holdDuration + releaseDuration + recoveryDuration
+        let cycleNumber = Int(elapsed / cycleDuration)
+        let localTime = elapsed.truncatingRemainder(dividingBy: cycleDuration)
+        let baseline = 0.20 + 0.06 * sin(elapsed * 2.0)
+        let startingForce = 15.0 + 0.45 * sin(Double(cycleNumber) * 1.3)
+
+        if localTime < restDuration {
+            return max(0, baseline)
+        }
+
+        if localTime < restDuration + rampDuration {
+            let progress = (localTime - restDuration) / rampDuration
+            return baseline + startingForce * smoothstep(progress)
+        }
+
+        if localTime < restDuration + rampDuration + holdDuration {
+            let holdTime = localTime - restDuration - rampDuration
+            let fatigue = 1.15 * (holdTime / holdDuration)
+            let tremor = 0.28 * sin(elapsed * 8.5) + 0.12 * sin(elapsed * 19.0 + 0.4)
+            let briefDip: Double
+            if cycleNumber % 3 == 1 {
+                briefDip = 1.25 * gaussian(holdTime, center: holdDuration * 0.58, width: 0.22)
+            } else {
+                briefDip = 0
+            }
+            return max(0, startingForce - fatigue + tremor - briefDip)
+        }
+
+        if localTime < restDuration + rampDuration + holdDuration + releaseDuration {
+            let releaseStart = restDuration + rampDuration + holdDuration
+            let progress = (localTime - releaseStart) / releaseDuration
+            return baseline + (startingForce - 1.1) * (1 - smoothstep(progress))
+        }
+
+        return max(0, baseline)
+    }
+
+    private func gaussian(_ value: Double, center: Double, width: Double) -> Double {
+        let normalized = (value - center) / max(width, 0.0001)
+        return exp(-0.5 * normalized * normalized)
+    }
+
+    private func smoothstep(_ value: Double) -> Double {
+        let clamped = max(0, min(value, 1))
+        return clamped * clamped * (3 - 2 * clamped)
     }
 }
 

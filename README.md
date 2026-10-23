@@ -4,6 +4,26 @@ SwallowEase is an iOS companion app prototype for a sensor-assisted swallowing-t
 
 > Portfolio and research prototype. It is not a medical device and is not intended for diagnosis or treatment.
 
+**Source code:** [github.com/So0onder/SwallowEase](https://github.com/So0onder/SwallowEase)
+
+## App preview
+
+<p align="center">
+  <img src="docs/images/home.png" width="30%" alt="SwallowEase home dashboard" />
+  <img src="docs/images/live-training.png" width="30%" alt="Live training with a simulated pressure waveform" />
+  <img src="docs/images/report.png" width="30%" alt="Training performance report" />
+</p>
+
+<p align="center"><em>Home dashboard · Live pressure training · Performance report</em></p>
+
+## Demo
+
+<p align="center">
+  <img src="docs/images/swallowease-demo.gif" width="360" alt="SwallowEase app demo" />
+</p>
+
+The demo uses deterministic simulated sensor data when BLE hardware is unavailable. Dynamic sessions include repetition-to-repetition force variation, baseline drift, a primary pressure peak and a smaller shoulder; static sessions model ramp-up, fatigue, tremor and brief pressure drops.
+
 ## Highlights
 
 - Native iOS interface built with SwiftUI
